@@ -12,7 +12,7 @@
 #include <vector>
 #include <algorithm>
 #include <cmath>
-
+#include <cstdint>
 #include "BowVector.h"
 
 namespace DBoW3 {

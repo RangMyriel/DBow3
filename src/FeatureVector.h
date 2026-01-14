@@ -13,6 +13,8 @@
 #include "BowVector.h"
 #include <map>
 #include <vector>
+#include <iostream>
+#include <cstdint>
 #include "exports.h"
 namespace DBoW3 {
 

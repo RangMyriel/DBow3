@@ -1,5 +1,13 @@
 INCLUDE_DIRECTORIES(. ./utils/)
 
+option(ENABLE_TIMING "开启性能计时" ON)
+if(ENABLE_TIMING)
+    add_definitions(-DENABLE_TIMING)
+endif()
+
+add_definitions(-DOMP_NUM_THREADS=${OpenMP_CXX_NUM_THREADS})
+message(STATUS "OpenMP线程数: ${OpenMP_CXX_NUM_THREADS}")
+
 FILE(GLOB hdrs_base "*.h" )
 FILE(GLOB srcs_base "*.c*")
 

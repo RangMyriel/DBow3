@@ -9,10 +9,16 @@
 
 #ifndef __D_T_BOW_VECTOR__
 #define __D_T_BOW_VECTOR__
-#include <cstdint>
+
 #include <map>
-#include <ostream>
+#include <vector>
+#include <iostream>
+#include <cstdint>
 #include "exports.h"
+#if _WIN32
+#include <cstdint>
+#endif
+
 namespace DBoW3 {
 
 /// Id of words

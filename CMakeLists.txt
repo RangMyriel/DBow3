@@ -1,11 +1,12 @@
 # ----------------------------------------------------------------------------
 #   Basic Configuration
 # ----------------------------------------------------------------------------
-CMAKE_MINIMUM_REQUIRED(VERSION 2.8)
+CMAKE_MINIMUM_REQUIRED(VERSION 3.10)
 
 set(CMAKE_CXX_STANDARD 17)
 
-PROJECT(DBoW3)
+PROJECT(dbow3)  # 改为小写，与package.xml匹配
+
 set(PROJECT_VERSION "0.0.1")
 string(REGEX MATCHALL "[0-9]" PROJECT_VERSION_PARTS "${PROJECT_VERSION}")
 list(GET PROJECT_VERSION_PARTS 0 PROJECT_VERSION_MAJOR)
@@ -40,7 +41,7 @@ else()
     SET(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_INSTALL_PREFIX}/${LIB_INSTALL_DIR}/cmake/ /usr/${LIB_INSTALL_DIR}/cmake )
 endif()
 
-
+set(CMAKE_INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/lib")
 
 #
 OPTION(BUILD_UTILS	"Set to OFF to not build utils" ON)
@@ -64,6 +65,14 @@ ENDIF()
 include_directories(${OpenCV_INCLUDE_DIRS})
 
 SET(REQUIRED_LIBRARIES ${REQUIRED_LIBRARIES} ${OpenCV_LIBS})
+
+# 添加OpenMP支持
+find_package(OpenMP REQUIRED)
+if(OpenMP_CXX_FOUND)
+    message(STATUS "启用OpenMP支持: ${OpenMP_CXX_VERSION}")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${OpenMP_EXE_LINKER_FLAGS}")
+endif()
 
 # ----------------------------------------------------------------------------
 #   PROJECT CONFIGURATION
@@ -136,6 +145,24 @@ IF(CMAKE_COMPILER_IS_GNUCXX OR MINGW)
         set(USE_SSE3 OFF CACHE BOOL "Enable SSE3 for GCC")
     endif ()
 
+    # 为现代CPU添加更高级的指令集支持
+    if(${CMAKE_SYSTEM_PROCESSOR} MATCHES x86_64* OR ${CMAKE_SYSTEM_PROCESSOR} MATCHES amd64*)
+        set(USE_AVX ON CACHE BOOL "Enable AVX for GCC")
+        set(USE_AVX2 ON CACHE BOOL "Enable AVX2 for GCC")
+        
+        if(USE_AVX)
+            set(EXTRA_C_FLAGS_RELEASE "${EXTRA_C_FLAGS_RELEASE} -mavx")
+        endif()
+        if(USE_AVX2)
+            set(EXTRA_C_FLAGS_RELEASE "${EXTRA_C_FLAGS_RELEASE} -mavx2")
+        endif()
+    endif()
+
+    option(USE_NATIVE_ARCH "使用-march=native自动优化" ON)
+    if(USE_NATIVE_ARCH)
+        set(EXTRA_C_FLAGS_RELEASE "${EXTRA_C_FLAGS_RELEASE} -march=native")
+    endif()
+
     set(EXTRA_C_FLAGS "${EXTRA_C_FLAGS} -Wall")
 
     if(WARNINGS_ARE_ERRORS)
@@ -206,8 +233,8 @@ ELSE()  # MSVC
 ENDIF()#END OF COMPILER SPECIFIC OPTIONS
 SET(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS} ${EXTRA_C_FLAGS_RELEASE}")
 SET(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS}  ${EXTRA_C_FLAGS_DEBUG}")
-SET(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -std=c++11")
-SET(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -std=c++11")
+SET(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}")
+SET(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG}")
 set(CMAKE_C_FLAGS_RELWITHDEBINFO "${CMAKE_C_FLAGS_RELEASE} ${CMAKE_C_FLAGS_DEBUG}")
 set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELEASE} ${CMAKE_CXX_FLAGS_DEBUG}")
 SET(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${EXTRA_EXE_LINKER_FLAGS}")
@@ -266,3 +293,14 @@ MESSAGE( STATUS )
 MESSAGE( STATUS )
 MESSAGE( STATUS "Change a value with: cmake -D<Variable>=<Value>" )
 MESSAGE( STATUS )
+
+# ROS2 集成
+if(DEFINED ENV{AMENT_PREFIX_PATH})
+  find_package(ament_cmake QUIET)
+  if(ament_cmake_FOUND)
+    ament_export_include_directories(include)
+    ament_export_libraries(${PROJECT_NAME})
+    ament_export_dependencies(OpenCV)
+    ament_package()
+  endif()
+endif()
