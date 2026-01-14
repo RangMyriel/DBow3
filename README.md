@@ -51,7 +51,7 @@ See utils/demo_general.cpp for an example
 The file orbvoc.dbow3 is the ORB vocabulary in ORBSLAM2 but in binary format of DBoW3:  https://github.com/raulmur/ORB_SLAM2/tree/master/Vocabulary
 
 
-## gnss_free fork 扩展：SuperPoint + 内存加载（SPVocabularyInMem）
+## fork 扩展：SuperPoint + 内存加载（SPVocabularyInMem）
 
 本仓库在上游 DBoW3 基础上，额外加入了面向 **SuperPoint 描述子** 与 **嵌入式/离线部署** 的两个能力：
 
