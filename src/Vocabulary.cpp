@@ -3,10 +3,12 @@
 #include "quicklz.h"
 #include "timers.h"
 #include <cassert>
+#include <cstring>
 #include <fcntl.h>
 #include <iomanip>
 #include <omp.h>
 #include <sstream>
+#include <streambuf>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <thread>
@@ -1130,11 +1132,25 @@ bool Vocabulary::loadMapped(const std::string &filename) {
     return false;
   }
 
+  struct MMapGuard {
+    void *mapped = nullptr;
+    size_t size = 0;
+    int fd = -1;
+    ~MMapGuard() {
+      if (mapped != nullptr && mapped != MAP_FAILED && size > 0) {
+        munmap(mapped, size);
+      }
+      if (fd != -1) {
+        close(fd);
+      }
+    }
+  } guard;
+  guard.fd = fd;
+
   // 获取文件信息
   struct stat sb;
   if (fstat(fd, &sb) == -1) {
     std::cout << "[Vocabulary] 无法获取文件状态" << std::endl;
-    close(fd);
     return false;
   }
 
@@ -1144,67 +1160,59 @@ bool Vocabulary::loadMapped(const std::string &filename) {
   void *mapped = mmap(NULL, sb.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
   if (mapped == MAP_FAILED) {
     std::cout << "[Vocabulary] 内存映射失败" << std::endl;
-    close(fd);
     return false;
   }
+  guard.mapped = mapped;
+  guard.size = static_cast<size_t>(sb.st_size);
 
   // 清除原有数据
   m_words.clear();
   m_nodes.clear();
 
-  std::cout << "[Vocabulary] 开始解析映射的内存数据..." << std::endl;
-
-  // 开始解析映射的内存数据
-  char *ptr = static_cast<char *>(mapped);
-  char *current_ptr = ptr;
-
-  // 读取魔数
-  uint64_t sig;
-  memcpy(&sig, current_ptr, sizeof(sig));
-  current_ptr += sizeof(sig);
-
-  if (sig != 88877711233) {
-    std::cout << "[Vocabulary] 无效的文件格式 (magic number不匹配)"
-              << std::endl;
-    munmap(mapped, sb.st_size);
-    close(fd);
-    throw std::runtime_error("Vocabulary::loadMapped - 文件类型不正确");
+  if (guard.size < sizeof(uint64_t)) {
+    std::cout << "[Vocabulary] 文件过小，无法识别格式" << std::endl;
+    return false;
   }
 
-  // 读取是否压缩标志
-  bool compressed;
-  memcpy(&compressed, current_ptr, sizeof(compressed));
-  current_ptr += sizeof(compressed);
-  std::cout << "[Vocabulary] 数据" << (compressed ? "已压缩" : "未压缩")
+  // 先做一次快速 magic number 校验，避免把非二进制格式喂给 fromStream()
+  uint64_t sig = 0;
+  std::memcpy(&sig, mapped, sizeof(sig));
+  if (sig != 88877711233) {
+    std::cout << "[Vocabulary] 非二进制格式 (magic number不匹配)" << std::endl;
+    return false;
+  }
+
+  std::cout << "[Vocabulary] magic number匹配，开始从内存映射流加载..."
             << std::endl;
 
-  // 读取节点数量
-  uint32_t nnodes;
-  memcpy(&nnodes, current_ptr, sizeof(nnodes));
-  current_ptr += sizeof(nnodes);
-  std::cout << "[Vocabulary] 节点数量: " << nnodes << std::endl;
+  class MemoryBuffer : public std::streambuf {
+  public:
+    MemoryBuffer(const char *data, size_t size) {
+      char *p = const_cast<char *>(data);
+      setg(p, p, p + size);
+    }
+  };
 
-  if (nnodes == 0) {
-    std::cout << "[Vocabulary] 词汇表为空" << std::endl;
-    munmap(mapped, sb.st_size);
-    close(fd);
-    return true;
+  class MemoryIStream : public std::istream {
+  public:
+    MemoryIStream(const char *data, size_t size)
+        : std::istream(nullptr), buf_(data, size) {
+      rdbuf(&buf_);
+    }
+
+  private:
+    MemoryBuffer buf_;
+  };
+
+  try {
+    MemoryIStream mem_stream(static_cast<const char *>(mapped), guard.size);
+    fromStream(mem_stream);
+  } catch (const std::exception &e) {
+    std::cout << "[Vocabulary] 内存映射加载失败: " << e.what() << std::endl;
+    throw;
   }
 
-  // 如果数据是压缩的，需要解压缩处理
-  if (compressed) {
-    std::cout << "[Vocabulary] 开始解压缩数据..." << std::endl;
-    // ... 保持原有代码 ...
-  } else {
-    // ... 保持原有代码 ...
-  }
-
-  // 清理资源
-  std::cout << "[Vocabulary] 内存映射加载完成，清理资源" << std::endl;
-  munmap(mapped, sb.st_size);
-  close(fd);
-
-  std::cout << "[Vocabulary] 加载完成。词汇数量: " << m_words.size()
+  std::cout << "[Vocabulary] 内存映射加载完成。词汇数量: " << m_words.size()
             << ", 节点数量: " << m_nodes.size() << std::endl;
   return true;
 }
